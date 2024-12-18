@@ -157,10 +157,21 @@ Heatmap(subset_scaled_data, name = "Expression",
         show_row_names = TRUE, show_column_names = FALSE,
         top_annotation = HeatmapAnnotation(Cluster = seurat_obj$seurat_clusters))
 dev.off()
-cluster_markers <- read.csv("Cluster_Markers.csv")
+
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install(c("clusterProfiler", "org.At.tair.db", "ggplot2", "dplyr"))
+
+library(clusterProfiler)
+library(org.At.tair.db)  # Arabidopsis TAIR annotations
+library(ggplot2)
+library(dplyr)
+
+setwd("C:/Users/Vishn/OneDrive/Desktop/vicky/PRECISION MED FILES")
+
+Cluster_markers <- read.csv("Cluster_Markers.csv")
 
 # Filter for significant markers (adjusted p-value < 0.05)
-significant_markers <- subset(cluster_markers, p_val_adj < 0.05)
+significant_markers <- subset(Cluster_markers, p_val_adj < 0.05)
 
 # Count the number of significant markers for each cluster
 significant_markers_summary <- table(significant_markers$cluster)
@@ -183,44 +194,53 @@ filtered_genes <- de_genes[de_genes$p_val_adj < 0.05 & abs(de_genes$avg_log2FC) 
 gene_list <- rownames(filtered_genes)
 print(gene_list)
 
-go_bp <- enrichGO(gene = gene_list, 
-                  OrgDb = org.At.tair.db, 
-                  keyType = "TAIR", 
-                  ont = "BP",  # Ontology: BP, MF, or CC
-                  pvalueCutoff = 0.05, 
-                  qvalueCutoff = 0.05, 
-                  readable = TRUE)
+# Check the structure of filtered_genes
+str(filtered_genes)
+head(filtered_genes)
 
-cluster_markers <- read.csv("Cluster_Markers.csv")
+# Extract TAIR IDs from the 'X' column
+gene_list <- filtered_genes$X
 
-# Filter for significant markers (adjusted p-value < 0.05)
-significant_markers <- subset(cluster_markers, p_val_adj < 0.05)
+# Inspect the extracted gene list
+head(gene_list)
 
-# Count the number of significant markers for each cluster
-significant_markers_summary <- table(significant_markers$cluster)
+library(clusterProfiler)
+library(org.At.tair.db)
 
-# Sort clusters by the number of significant markers
-significant_markers_summary <- sort(significant_markers_summary, decreasing = TRUE)
+go_bp <- enrichGO(
+  gene = gene_list,
+  OrgDb = org.At.tair.db,
+  keyType = "TAIR",
+  ont = "BP",  # Biological Process
+  pvalueCutoff = 0.05,
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
 
-# Print summary of significant markers per cluster
-print(significant_markers_summary)
+# View results
+head(go_bp)
 
-cluster_3_markers <- subset(significant_markers, cluster == 3)
+write.csv(as.data.frame(go_bp), "GO_Enrichment_BP.csv")
 
-# Save markers for further analysis
-write.csv(cluster_3_markers, "Cluster_3_Markers.csv", row.names = FALSE)
+# Bar plot of the top 10 enriched terms
+barplot(go_bp, showCategory = 10, title = "Top 10 Enriched GO Terms")
 
-gene_list <- cluster_3_markers$gene  # Extract gene names
+# Dot plot for visualization
+dotplot(go_bp, showCategory = 10, title = "GO Enrichment (Biological Process)")
 
-de_genes <- read.csv("Differentially_Expressed_Genes.csv")
-filtered_genes <- de_genes[de_genes$p_val_adj < 0.05 & abs(de_genes$avg_log2FC) > 1, ]
-gene_list <- rownames(filtered_genes)
-print(gene_list)
+# Network plot to show relationships between enriched terms
+cnetplot(go_bp, showCategory = 10)
 
-go_bp <- enrichGO(gene = gene_list, 
-                  OrgDb = org.At.tair.db, 
-                  keyType = "TAIR", 
-                  ont = "BP",  # Ontology: BP, MF, or CC
-                  pvalueCutoff = 0.05, 
-                  qvalueCutoff = 0.05, 
-                  readable = TRUE)
+# Group similar terms
+go_bp_simplified <- simplify(
+  go_bp,
+  cutoff = 0.7,  # Similarity cutoff
+  by = "p.adjust",  # Simplify based on adjusted p-value
+  select_fun = min
+)
+
+# View simplified results
+head(go_bp_simplified)
+
+# Save the GO enrichment results to a CSV file
+write.csv(go_bp_simplified, "GO_BP_Enrichment_Results.csv", row.names = FALSE)
